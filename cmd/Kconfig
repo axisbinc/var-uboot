@@ -1875,6 +1875,24 @@ config CMD_SNTP
 	help
 	  Synchronize RTC via network
 
+config CMD_UDP_WAIT
+	bool "udp_wait"
+	select PROT_UDP
+	help
+	  Wait for a UDP trigger packet on a specified port.
+	  Parses payload to set serverip, port, bootfile environment
+	  variables and sends an ACK packet back.
+
+config CMD_TFTP_TRIGGER_BOOT
+	bool "udp_trigger_boot"
+	depends on CMD_TFTPBOOT && CMD_BOOTI
+	select CMD_UDP_WAIT
+	help
+	  Add the udp_trigger_boot command.
+	  This waits for a UDP trigger (udp_wait) and then downloads the kernel
+	  and device tree via TFTP before booting with booti.
+	  On any failure it can fall back to running bootcmd_default.
+
 config CMD_DNS
 	bool "dns"
 	help

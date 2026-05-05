@@ -9,6 +9,14 @@
 
 static struct udp_ops *udp_ops;
 
+bool udp_needs_ipaddr(void)
+{
+	if (!udp_ops)
+		return true;
+
+	return !(udp_ops->flags & UDP_OPS_NO_IPADDR);
+}
+
 int udp_prereq(void)
 {
 	int ret = 0;

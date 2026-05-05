@@ -25,6 +25,7 @@ obj-$(CONFIG_CMD_PING6) += ping6.o
 obj-$(CONFIG_CMD_PCAP) += pcap.o
 obj-$(CONFIG_CMD_RARP) += rarp.o
 obj-$(CONFIG_CMD_SNTP) += sntp.o
+obj-$(CONFIG_CMD_UDP_WAIT) += udp_wait.o
 obj-$(CONFIG_CMD_TFTPBOOT) += tftp.o
 obj-$(CONFIG_UDP_FUNCTION_FASTBOOT)  += fastboot.o
 obj-$(CONFIG_CMD_WOL)  += wol.o

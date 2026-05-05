@@ -6,6 +6,9 @@
 #ifndef __UDP
 #define __UDP
 
+#include <linux/types.h>
+#include <stdbool.h>
+
 /**
  * struct udp_ops - function to handle udp packet
  *
@@ -20,11 +23,22 @@ struct udp_ops {
 	int (*prereq)(void *data);
 	int (*start)(void *data);
 	void *data;
+	u32 flags;
 };
+
+/* udp_ops flags */
+#define UDP_OPS_NO_IPADDR	(1U << 0)
 
 int udp_prereq(void);
 
 int udp_start(void);
+
+/**
+ * udp_needs_ipaddr() - Report whether current UDP user requires ipaddr
+ *
+ * @return: true if ipaddr must be set to run the current UDP loop
+ */
+bool udp_needs_ipaddr(void);
 
 /**
  * udp_loop() - network loop for udp protocol

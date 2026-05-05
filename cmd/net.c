@@ -21,6 +21,7 @@
 #include <net/udp.h>
 #include <net/sntp.h>
 #include <net/ncsi.h>
+#include <net/udp_wait.h>
 
 static int netboot_common(enum proto_t, struct cmd_tbl *, int, char * const []);
 
@@ -552,6 +553,167 @@ U_BOOT_CMD(
 	sntp,	2,	1,	do_sntp,
 	"synchronize RTC via network",
 	"[NTP server IP]\n"
+);
+#endif
+
+#if defined(CONFIG_CMD_UDP_WAIT)
+static struct udp_ops udp_wait_ops = {
+	.prereq = udp_wait_prereq,
+	.start = udp_wait_start,
+	.data = NULL,
+	.flags = UDP_OPS_NO_IPADDR,
+};
+
+int do_udp_wait(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
+{
+	const char *port_str = NULL;
+	const char *timeout_str = NULL;
+
+	if (argc >= 2)
+		port_str = argv[1];
+	else
+		port_str = env_get("udp_port_for_trigger");
+
+	if (!port_str || !*port_str)
+		port_str = "5000";
+
+	udp_wait_port = simple_strtoul(port_str, NULL, 10);
+	if (udp_wait_port <= 0 || udp_wait_port > 65535) {
+		printf("Invalid port: %s\n", port_str);
+		return CMD_RET_FAILURE;
+	}
+
+	if (argc >= 3)
+		timeout_str = argv[2];
+	else
+		timeout_str = env_get("udp_trigger_timeout");
+
+	if (!timeout_str || !*timeout_str)
+		timeout_str = "10000";
+
+	udp_wait_timeout = simple_strtoul(timeout_str, NULL, 10);
+	if (udp_wait_timeout < 0) {
+		printf("Invalid timeout: %s\n", timeout_str);
+		return CMD_RET_FAILURE;
+	}
+
+	if (udp_loop(&udp_wait_ops) < 0) {
+		printf("UDP wait failed on port %d\n", udp_wait_port);
+		return CMD_RET_FAILURE;
+	}
+
+	return CMD_RET_SUCCESS;
+}
+
+U_BOOT_CMD(
+	udp_wait,	3,	0,	do_udp_wait,
+	"wait for UDP trigger packet",
+	"[port] [timeout_ms]\n"
+	"    - Wait for UDP packet (defaults: $udp_port_for_trigger, $udp_trigger_timeout)\n"
+	"    - Does not require $ipaddr (receive-only)\n"
+	"    - Packet payload format: serverip:port:bootfile\n"
+	"    - Sets serverip, tftpport, bootfile env vars\n"
+);
+
+#endif /* CONFIG_CMD_UDP_WAIT */
+
+#if defined(CONFIG_CMD_TFTP_TRIGGER_BOOT)
+
+static int tftp_trigger_fallback_to_bootcmd_default(void)
+{
+	const char *fallback = env_get("bootcmd_default");
+
+	if (!fallback || !*fallback) {
+		puts("tftp_trigger_boot: bootcmd_default not set, cannot fall back\n");
+		return CMD_RET_FAILURE;
+	}
+
+	puts("tftp_trigger_boot: falling back to bootcmd_default\n");
+	if (run_command("run bootcmd_default", 0))
+		return CMD_RET_FAILURE;
+
+	return CMD_RET_SUCCESS;
+}
+
+static int do_tftp_trigger_boot(struct cmd_tbl *cmdtp, int flag, int argc,
+			      char *const argv[])
+{
+	char cmd[128];
+	char bootargs[256];
+	const char *fdt_addr;
+	const char *console;
+	const char *baudrate;
+	int len;
+
+	/* Keep this fixed as requested */
+	/* TODO: remove this hardcoding */
+	if (run_command("setenv ipaddr 192.168.29.89", 0))
+		return tftp_trigger_fallback_to_bootcmd_default();
+
+	/* Wait for trigger; on timeout/failure, fall back */
+	if (run_command("udp_wait", 0))
+		return tftp_trigger_fallback_to_bootcmd_default();
+
+	if (run_command("tftpboot ${loadaddr} ${bootfile}", 0))
+		return tftp_trigger_fallback_to_bootcmd_default();
+
+	fdt_addr = env_get("fdt_addr_tftpboot");
+	if (!fdt_addr || !*fdt_addr)
+		fdt_addr = "0x51000000";
+
+	snprintf(cmd, sizeof(cmd), "tftpboot %s ${fdtfile}", fdt_addr);
+	if (run_command(cmd, 0))
+		return tftp_trigger_fallback_to_bootcmd_default();
+
+	/* TODO: scan and set mmcrootpart? For now just hardcode to mmcblk1p1 as requested */
+	console = env_get("console");
+	baudrate = env_get("baudrate");
+
+	if (!console || !*console)
+		console = NULL;
+	if (!baudrate || !*baudrate)
+		baudrate = NULL;
+
+	if (console) {
+		/*
+		 * Some environments put speed in $console already (e.g. "ttymxc1,115200").
+		 * Only append $baudrate if $console has no comma.
+		 */
+		if (!baudrate || strchr(console, ','))
+			len = snprintf(bootargs, sizeof(bootargs),
+				      "console=%s root=/dev/mmcblk1p1 rootwait rw",
+				      console);
+		else
+			len = snprintf(bootargs, sizeof(bootargs),
+				      "console=%s,%s root=/dev/mmcblk1p1 rootwait rw",
+				      console, baudrate);
+	} else {
+		len = snprintf(bootargs, sizeof(bootargs),
+			      "root=/dev/mmcblk1p1 rootwait rw");
+	}
+
+	if (len < 0 || len >= sizeof(bootargs)) {
+		puts("tftp_trigger_boot: bootargs buffer too small\n");
+		return tftp_trigger_fallback_to_bootcmd_default();
+	}
+
+	env_set("bootargs", bootargs);
+
+	snprintf(cmd, sizeof(cmd), "booti ${loadaddr} - %s", fdt_addr);
+	if (run_command(cmd, 0))
+		return tftp_trigger_fallback_to_bootcmd_default();
+
+	return CMD_RET_SUCCESS;
+}
+
+U_BOOT_CMD(
+	tftp_trigger_boot,	1,	0,	do_tftp_trigger_boot,
+	"boot via UDP trigger + TFTP, else fall back",
+	"\n"
+	"    - Sets ipaddr to 192.168.29.89\n"
+	"    - Runs udp_wait using $udp_port_for_trigger / $udp_trigger_timeout\n"
+	"    - TFTP boots ${bootfile} to ${loadaddr} and ${fdtfile} to $fdt_addr_tftpboot\n"
+	"    - On any failure, runs: run bootcmd_default\n"
 );
 #endif
 

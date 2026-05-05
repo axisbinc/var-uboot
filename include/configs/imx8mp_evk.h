@@ -9,6 +9,7 @@
 #include <linux/sizes.h>
 #include <linux/stringify.h>
 #include <asm/arch/imx-regs.h>
+#include <asm/mach-imx/gpio.h>
 #include "imx_env.h"
 
 #define CFG_SYS_UBOOT_BASE	(QSPI0_AMBA_BASE + CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR * 512)
@@ -82,6 +83,18 @@
 		"booti ${loadaddr} - ${fdt_addr_r}"
 
 #else
+
+#ifdef CONFIG_CMD_TFTP_TRIGGER_BOOT
+#define UDP_TRIGGER_ENV_SETTINGS \
+	"udp_port_for_trigger=5000\0" \
+	"udp_trigger_timeout=10000\0" \
+	"fdt_addr_tftpboot=0x51000000\0" \
+	"bootcmd_default=" CONFIG_BOOTCOMMAND "\0" \
+	"bootcmd=tftp_trigger_boot\0"
+#else
+#define UDP_TRIGGER_ENV_SETTINGS
+#endif
+
 #define CFG_EXTRA_ENV_SETTINGS		\
 	CFG_MFG_ENV_SETTINGS \
 	JAILHOUSE_ENV \
@@ -96,6 +109,7 @@
 	"console=ttymxc1,115200\0" \
 	"fdt_addr_r=0x43000000\0"			\
 	"fdt_addr=0x43000000\0"			\
+	UDP_TRIGGER_ENV_SETTINGS \
 	"boot_fdt=try\0" \
 	"fdt_high=0xffffffffffffffff\0"		\
 	"boot_fit=no\0" \
@@ -184,6 +198,15 @@
 
 #ifdef CONFIG_ANDROID_SUPPORT
 #include "imx8mp_evk_android.h"
+#endif
+
+#ifdef CONFIG_LED_STATUS
+#define CONFIG_LED_STATUS_OFF       0
+#define CONFIG_LED_STATUS_FREQ      2
+#define STATUS_LED_GPIO_NUM         IMX_GPIO_NR(3, 16)
+#define CONFIG_LED_STATUS_BIT              STATUS_LED_GPIO_NUM
+#define CONFIG_LED_STATUS_STATE            CONFIG_LED_STATUS_ON
+#define STATUS_LED_PERIOD           (CONFIG_SYS_HZ / CONFIG_LED_STATUS_FREQ)
 #endif
 
 #endif

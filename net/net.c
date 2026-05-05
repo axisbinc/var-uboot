@@ -1434,6 +1434,8 @@ void net_process_received_packet(uchar *in_packet, int len)
 
 static int net_check_prereq(enum proto_t protocol)
 {
+	bool need_ipaddr = true;
+
 	switch (protocol) {
 		/* Fall through */
 #if defined(CONFIG_CMD_PING)
@@ -1464,6 +1466,7 @@ static int net_check_prereq(enum proto_t protocol)
 	case UDP:
 		if (udp_prereq())
 			return 1;
+		need_ipaddr = udp_needs_ipaddr();
 		goto common;
 #endif
 
@@ -1499,7 +1502,7 @@ common:
 				puts("*** ERROR: `ip6addr` not set\n");
 				return 1;
 			}
-		} else if (net_ip.s_addr == 0) {
+		} else if (need_ipaddr && net_ip.s_addr == 0) {
 			puts("*** ERROR: `ipaddr' not set\n");
 			return 1;
 		}
