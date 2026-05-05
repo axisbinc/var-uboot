@@ -108,3 +108,6 @@ __pycache__
 
 # moveconfig database
 /moveconfig.db
+
+# Compile commands
+compile_commands.json
