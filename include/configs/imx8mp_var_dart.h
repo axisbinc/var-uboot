@@ -54,17 +54,22 @@
  * These variables are only added to the default environment when the
  * feature is built in. The default bootcmd is intentionally NOT modified;
  * operators opt in explicitly with:
- *   setenv bootcmd 'run tftp_trigger_boot'; saveenv
+ *   setenv bootcmd 'tftp_trigger_boot'; saveenv
  *
- * 'bootcmd_default' captures CONFIG_BOOTCOMMAND so the trigger helper can
- * fall back to the stock boot path on any failure.
+ * 'bootcmd_default' holds the stock Variscite boot path so the trigger
+ * helper can fall back to it on any failure. It is pinned to the upstream
+ * defconfig value ("run bsp_bootcmd") rather than CONFIG_BOOTCOMMAND,
+ * because CONFIG_BOOTCOMMAND itself may be overridden (e.g. by a Kconfig
+ * fragment) to invoke tftp_trigger_boot — in which case expanding
+ * CONFIG_BOOTCOMMAND here would create infinite recursion through the
+ * fallback path.
  */
 #ifdef CONFIG_CMD_TFTP_TRIGGER_BOOT
 #define UDP_TRIGGER_ENV_SETTINGS \
 	"udp_port_for_trigger=5000\0" \
-	"udp_trigger_timeout=10000\0" \
+	"udp_trigger_timeout=" __stringify(CONFIG_TFTP_TRIGGER_TIMEOUT_MS) "\0" \
 	"fdt_addr_tftpboot=0x51000000\0" \
-	"bootcmd_default=" CONFIG_BOOTCOMMAND "\0"
+	"bootcmd_default=run bsp_bootcmd\0"
 #else
 #define UDP_TRIGGER_ENV_SETTINGS
 #endif

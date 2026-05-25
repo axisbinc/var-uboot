@@ -614,6 +614,7 @@ static int do_udp_wait(struct cmd_tbl *cmdtp, int flag, int argc,
 		.flags	= UDP_OPS_NO_IPADDR,
 	};
 	const char *port_env, *timeout_env;
+	struct in_addr saved_net_ip;
 	int ret;
 
 	/* Port from argv or env */
@@ -629,16 +630,32 @@ static int do_udp_wait(struct cmd_tbl *cmdtp, int flag, int argc,
 		udp_wait_port = (int)dectoul(port_env, NULL);
 	}
 
-	/* Timeout (ms) from argv or env, default 10s */
+	/* Timeout (ms) from argv or env; otherwise Kconfig default. */
 	if (argc >= 3) {
 		udp_wait_timeout = dectoul(argv[2], NULL);
 	} else {
 		timeout_env = env_get("udp_trigger_timeout");
-		udp_wait_timeout = timeout_env ? dectoul(timeout_env, NULL)
-					       : 10000UL;
+		udp_wait_timeout = timeout_env
+			? dectoul(timeout_env, NULL)
+			: (ulong)CONFIG_TFTP_TRIGGER_TIMEOUT_MS;
 	}
 
+	/*
+	 * Accept directed subnet broadcasts (e.g. 169.254.255.255) in
+	 * addition to the limited broadcast (255.255.255.255) and our own
+	 * IP. The IP receive filter in net/net.c:net_ip_handler short-
+	 * circuits when net_ip == 0, so temporarily clear it for the
+	 * duration of udp_loop. Authentication is enforced by the token
+	 * check inside udp_wait_handle(); the UDP port match still
+	 * applies, so this widening is safe.
+	 */
+	saved_net_ip = net_ip;
+	net_ip.s_addr = 0;
+
 	ret = udp_loop(&ops);
+
+	net_ip = saved_net_ip;
+
 	if (ret < 0) {
 		puts("udp_wait: failed or timed out\n");
 		return CMD_RET_FAILURE;
@@ -676,8 +693,16 @@ U_BOOT_CMD(
 static void tftp_trigger_set_linklocal(void)
 {
 	char ip[16];
-	u8 mid = net_ethaddr[4];
-	u8 lo = net_ethaddr[5];
+	u8 mid, lo;
+
+	/*
+	 * Populate net_ethaddr from the current eth device.
+	 */
+	eth_env_get_enetaddr_by_index("eth", eth_get_dev_index(),
+				      net_ethaddr);
+
+	mid = net_ethaddr[4];
+	lo  = net_ethaddr[5];
 
 	if (mid == 0)
 		mid = 1;
@@ -800,7 +825,7 @@ U_BOOT_CMD(
 	"    - Wait for a UDP trigger, then TFTP-load the kernel and DTB\n"
 	"      and boot. Falls back to 'run bootcmd_default' on any\n"
 	"      failure. Designed to be installed as the active bootcmd:\n"
-	"        setenv bootcmd 'run tftp_trigger_boot'; saveenv"
+	"        setenv bootcmd 'tftp_trigger_boot'; saveenv"
 );
 #endif	/* CONFIG_CMD_TFTP_TRIGGER_BOOT */
 

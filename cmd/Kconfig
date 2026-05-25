@@ -1898,6 +1898,16 @@ config CMD_UDP_WAIT
 	  Defaults are read from env 'udp_port_for_trigger' and
 	  'udp_trigger_timeout'.
 
+config TFTP_TRIGGER_TIMEOUT_MS
+	int "udp_wait default timeout (ms)"
+	default 10000
+	range 0 600000
+	depends on CMD_UDP_WAIT
+	help
+	  Default timeout (in milliseconds) the udp_wait command waits for a
+	  trigger packet before giving up. Can still be overridden at runtime
+	  via argv or the 'udp_trigger_timeout' env variable.
+
 config TFTP_TRIGGER_TOKEN
 	string "Trigger handshake token"
 	default "edcbrd01"
@@ -1927,7 +1937,7 @@ config CMD_TFTP_TRIGGER_BOOT
 
 	  This command is intentionally NOT wired into the default 'bootcmd';
 	  operators opt in explicitly with e.g.
-	    setenv bootcmd 'run tftp_trigger_boot'; saveenv
+	    setenv bootcmd 'tftp_trigger_boot'; saveenv
 
 config CMD_LINK_LOCAL
 	bool "linklocal"
