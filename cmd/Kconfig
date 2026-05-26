@@ -1919,6 +1919,21 @@ config TFTP_TRIGGER_TOKEN
 	  accidental triggers, not against an adversary with code-read access
 	  to the U-Boot image.
 
+config TFTP_TRIGGER_ACK_PORT
+	int "Trigger ACK broadcast port (0 = disabled)"
+	default 0
+	range 0 65535
+	depends on CMD_UDP_WAIT
+	help
+	  After accepting a valid trigger packet, broadcast a one-line UDP
+	  "check-in" datagram to this port so a fleet-tracking host can record
+	  which devices answered. Payload:
+
+	    AXISBACK:<mac>:<ipaddr>:<bootfile>
+
+	  Broadcast is used so the device does not need to ARP-resolve the
+	  trigger sender. Set to 0 to disable the announcement.
+
 config CMD_TFTP_TRIGGER_BOOT
 	bool "tftp_trigger_boot"
 	depends on CMD_TFTPBOOT && CMD_BOOTI

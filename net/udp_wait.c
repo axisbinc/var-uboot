@@ -34,6 +34,71 @@ static bool udp_wait_packet_received; /* Track if we've processed a packet */
 #define CONFIG_TFTP_TRIGGER_TOKEN "edcbrd01"
 #endif
 
+#ifndef CONFIG_TFTP_TRIGGER_ACK_PORT
+#define CONFIG_TFTP_TRIGGER_ACK_PORT 0
+#endif
+
+/*
+ * Send a broadcast UDP "check-in" announcing this device's identity so a
+ * fleet-tracking listener on the LAN can record who picked up the trigger.
+ *
+ * Payload (single line, ':' separated):
+ *   AXISBACK:<mac>:<ipaddr>:<bootfile>
+ *
+ * Broadcast is used deliberately so the device doesn't need to ARP the
+ * trigger sender (which may be on a different IP than the one we just
+ * cached in net_server_ip, and we want this to be best-effort fire-and-
+ * forget anyway). The host-side trigger tool binds to the ACK port and
+ * dedupes by MAC.
+ *
+ * Disabled if CONFIG_TFTP_TRIGGER_ACK_PORT == 0.
+ */
+static void udp_wait_send_ack(const char *bootfile)
+{
+	int port = CONFIG_TFTP_TRIGGER_ACK_PORT;
+	struct in_addr bcast;
+	struct in_addr saved_net_ip;
+	const char *ipaddr_env;
+	const char *ip_str;
+	uchar *payload;
+	int len;
+
+	if (port <= 0 || port > 65535)
+		return;
+
+	/*
+	 * do_tftp_trigger_boot temporarily zeroes net_ip so the receive
+	 * filter accepts directed broadcasts. That zero would also become
+	 * the source IP of our ACK datagram (and of the AXISBACK payload).
+	 * Re-derive the link-local from the 'ipaddr' env (set just before
+	 * udp_wait was invoked) and pin it for the duration of the send.
+	 */
+	ipaddr_env = env_get("ipaddr");
+	ip_str = (ipaddr_env && *ipaddr_env) ? ipaddr_env : "0.0.0.0";
+
+	saved_net_ip = net_ip;
+	if (!net_ip.s_addr && ipaddr_env && *ipaddr_env)
+		net_ip = string_to_ip(ipaddr_env);
+
+	payload = (uchar *)net_tx_packet + net_eth_hdr_size() + IP_UDP_HDR_SIZE;
+	len = snprintf((char *)payload, 256,
+		       "AXISBACK:%02x:%02x:%02x:%02x:%02x:%02x:%s:%s",
+		       net_ethaddr[0], net_ethaddr[1], net_ethaddr[2],
+		       net_ethaddr[3], net_ethaddr[4], net_ethaddr[5],
+		       ip_str,
+		       bootfile ? bootfile : "");
+	if (len <= 0) {
+		net_ip = saved_net_ip;
+		return;
+	}
+
+	bcast.s_addr = 0xFFFFFFFF;
+	net_send_udp_packet((uchar *)net_bcast_ethaddr, bcast, port, port, len);
+	printf("UDP wait: ACK sent (bcast port %d, src %s)\n", port, ip_str);
+
+	net_ip = saved_net_ip;
+}
+
 static void udp_wait_copy_ip_token(char *dst, size_t dst_len, const char *src)
 {
 	size_t i = 0;
@@ -183,6 +248,9 @@ static void udp_wait_handler(uchar *pkt, unsigned dest, struct in_addr sip,
 	env_set("trigger_srcport", tmp);
 
 	printf("UDP wait: trigger accepted, serverip=%s\n", env_get("serverip"));
+
+	/* Best-effort fleet check-in. Failure is intentionally silent. */
+	udp_wait_send_ack(bootfile_str);
 
 	udp_wait_packet_received = true;
 

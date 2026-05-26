@@ -69,7 +69,9 @@
 	"udp_port_for_trigger=5000\0" \
 	"udp_trigger_timeout=" __stringify(CONFIG_TFTP_TRIGGER_TIMEOUT_MS) "\0" \
 	"fdt_addr_tftpboot=0x51000000\0" \
-	"bootcmd_default=run bsp_bootcmd\0"
+	"bootcmd_default=run bsp_bootcmd\0" \
+	"tftpargs=setenv bootargs ${mcore_clk} console=${console} " \
+		"rw ${cma_size} cma_name=linux,cma\0"
 #else
 #define UDP_TRIGGER_ENV_SETTINGS
 #endif

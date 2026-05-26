@@ -793,11 +793,20 @@ static int do_tftp_trigger_boot(struct cmd_tbl *cmdtp, int flag, int argc,
 		goto fallback;
 	}
 
-	/* Step 4: bootargs via the board's mmcargs (root=/dev/mmcblk... etc.)
-	 * If the board doesn't define mmcargs, this is a soft failure: we
-	 * still try booti since the user may have already populated bootargs.
+	/* Step 4: bootargs.
+	 *
+	 * Prefer a dedicated 'tftpargs' env if present — for an
+	 * initramfs-bundled kernel we must NOT set root=<mmc partition>,
+	 * else the in-kernel /init pivots out of the ramfs into mmc.
+	 * Default tftpargs (set in board env) omits root=.
+	 *
+	 * Fall back to 'mmcargs' if 'tftpargs' isn't defined, so the
+	 * trigger path still works for non-bundled kernels that need
+	 * root= pointing at an on-disk rootfs.
 	 */
-	if (env_get("mmcargs"))
+	if (env_get("tftpargs"))
+		run_command("run tftpargs", 0);
+	else if (env_get("mmcargs"))
 		run_command("run mmcargs", 0);
 	if (env_get("optargs"))
 		run_command("run optargs", 0);
